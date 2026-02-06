@@ -5,7 +5,7 @@
 1. [x] Strip existing agent, set up bug reporter persona/instructions
 2. [x] Add structured data gathering (priority, description, expected behaviour, repro steps)
 3. [x] Add repo docs reading for product knowledge
-4. [ ] Add Loom link collection with guidance document link (text display in frontend)
+4. [x] Add Loom link collection with guidance document link (text display in frontend)
 5. [ ] Add summary/confirmation step
 6. [ ] Add GitHub issue creation and return URL
 7. [ ] Add text display in frontend for links and summaries
@@ -66,3 +66,28 @@
   - `agent/.env.local`
 - **Follow-ups:**
   - Step 4: Add Loom link collection with guidance document link
+
+### Step 4 — Loom link collection with text display
+
+- **Goal:** Allow the agent to send text/links to the frontend chat (for Loom guidance, summaries, etc.)
+- **Plan:** Add tools that use LiveKit's send_text() to display messages in the chat
+- **Decisions:**
+  - Added `get_job_context` import to access the LiveKit session from within tools
+  - Added `LOOM_GUIDANCE_URL` environment variable with sensible default
+  - Created `send_text_to_client` tool for general text/link sharing
+  - Created `send_loom_guidance` tool specifically for the Loom help link
+  - Created `request_text_input` tool to prompt users to type in chat
+  - **Key learning:** Must use `topic="lk.chat"` (the standard LiveKit chat topic) for messages
+    to appear in the frontend. Custom topics require registering handlers manually.
+  - Updated frontend `session-view.tsx` to auto-open chat when agent sends a chat message
+    (detected by `lastMessage.type === 'chatMessage'` and `from?.isLocal === false`)
+  - Updated instructions to explain when to use these tools
+- **Python concepts covered:**
+  - `get_job_context()` — accessing runtime context from within a tool
+  - `await` with async methods — `send_text()` is asynchronous
+  - Default values in `os.getenv()` — fallback URL if not configured
+- **Files changed:**
+  - `agent/agent.py`
+  - `frontend/components/app/session-view.tsx`
+- **Follow-ups:**
+  - Step 5: Add summary/confirmation step

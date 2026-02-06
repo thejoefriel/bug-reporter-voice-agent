@@ -111,6 +111,22 @@ export const SessionView = ({
     }
   }, [messages]);
 
+  // Auto-open chat when the agent sends a chat message
+  // This is triggered by send_text_to_client, send_loom_guidance, or request_text_input
+  useEffect(() => {
+    const lastMessage = messages.at(-1);
+
+    // Check if this is a chat message from the agent (not from the user)
+    const shouldOpenChat =
+      lastMessage &&
+      lastMessage.type === 'chatMessage' &&
+      lastMessage.from?.isLocal === false;
+
+    if (shouldOpenChat && !chatOpen) {
+      setChatOpen(true);
+    }
+  }, [messages, chatOpen]);
+
   return (
     <section className="bg-background relative z-10 h-svh w-svw overflow-hidden" {...props}>
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />

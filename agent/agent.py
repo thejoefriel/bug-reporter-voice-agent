@@ -4,13 +4,16 @@ from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Optional
 from livekit import agents
-from livekit.agents import AgentServer, AgentSession, Agent, room_io, function_tool
+from livekit.agents import AgentServer, AgentSession, Agent, room_io, function_tool, get_job_context
 from livekit.plugins import openai, noise_cancellation
 
 load_dotenv(".env.local")
 
 # Configuration: path to the product repo whose docs we'll load
 TARGET_REPO_PATH = os.getenv("TARGET_REPO_PATH")
+
+# URL to Loom recording guidance document (shown to clients who need help recording)
+LOOM_GUIDANCE_URL = os.getenv("LOOM_GUIDANCE_URL", "https://support.loom.com/hc/en-us/articles/360002158057-Getting-started-with-Loom")
 
 
 def load_product_docs(repo_path: str) -> str:
@@ -68,9 +71,10 @@ def build_agent_instructions() -> str:
 
         ## Your conversation flow
 
-        1. Greet the client and ask them to describe the issue they're facing.
-        2. Listen carefully and ask clarifying questions to understand the problem.
-        3. Gather diagnostic details by asking relevant questions. Examples:
+        1. Greet the client and explain what will happen during this conversation. The point is to help clarify the issue. It means they may be asked a couple of times what's happening, and that is just to try and spot and information that might be useful for our developers. 
+        2. Ask them to describe the issue they're facing.
+        3. Listen carefully and ask clarifying questions to understand the problem.
+        4. Gather diagnostic details by asking relevant questions. Examples:
            - Did you see an error message? If so, what did it say?
            - What was the URL in your browser when the issue occurred?
            - What was the title or name of the page you were on?
@@ -78,9 +82,11 @@ def build_agent_instructions() -> str:
            IMPORTANT: Only ask questions that are relevant to the product's actual features.
            Check the product documentation to understand what the product has. For example,
            if the product has no login system, do not ask about login or user accounts.
-        4. Help them articulate what they expected to happen versus what actually happened.
-        5. Guide them through recalling the steps they took before the issue occurred.
-        6. Help them determine the priority level based on these definitions:
+        5. Help them articulate what they expected to happen versus what actually happened.
+        6. If the client hasn't already described the steps they took, guide them through
+           recalling what happened. But if they've already explained the sequence of events
+           while describing the issue, don't ask them to repeat it — just confirm you understood.
+        7. Help them determine the priority level based on these definitions:
            - Urgent: The platform is offline or in a state causing serious brand damage
              or restriction on income. Response within 1 hour, resolve within 1 day.
            - High: A brand or function issue, e.g. part of the platform is damaged but
@@ -90,12 +96,15 @@ def build_agent_instructions() -> str:
              resolve within 8 working days.
            - Low: An error that does not inhibit user experience, such as a styling issue.
              Response within 2 working days, resolution time agreed with client.
-        7. Ask if they have a screen recording of the issue (e.g. a Loom recording).
+        8. Ask if they have a screen recording of the issue (e.g. a Loom recording).
 
         ## Your behaviour
 
         - Be conversational and patient. Clients will likely not be technical.
-        - Don't say thank every time though - ensure you're keeping the conversation moving and not making them repeat themslevs. 
+        - IMPORTANT: Do not make clients repeat themselves. If they've already explained
+          something (like what steps they took), don't ask again. Extract the information
+          from what they've already said and confirm your understanding instead.
+        - Keep the conversation moving — don't over-thank or be overly formal.
         - Apologise that they are facing issues
         - Reassure them that even though you are a bot, this is designed to help them break down the issue and then share it with our very human team!
         - Ask one or two questions at a time, not a long list.
@@ -125,6 +134,22 @@ def build_agent_instructions() -> str:
         Use get_report_status to check what you've collected and what's still missing.
         The required fields are: description, expected_behaviour, steps_to_reproduce,
         priority, and issue_type. Don't ask to submit until all required fields are filled.
+
+        ## Sharing links and text with the client
+
+        Use send_text_to_client to display text in the client's chat window. This is useful for:
+        - Sharing links they need to click
+        - Displaying summaries they can review
+        - Showing the final GitHub issue URL
+
+        IMPORTANT: When sharing links or asking for text input, you MUST actually call
+        the tool — don't just say you're sharing a link. The client can't see links
+        unless you call the tool.
+
+        - send_loom_guidance: Call this when the client needs help creating a screen recording.
+          It sends them a clickable link to Loom's getting started guide.
+        - request_text_input: Call this when you need the client to type something (like a
+          URL or email). It opens the chat and prompts them to type there.
     """
 
     # If we have product docs, add them to help the agent understand the product
@@ -252,6 +277,56 @@ class BugReporterAgent(Agent):
             status_parts.append("\nAll required fields collected! Ready to summarise and confirm with the client.")
 
         return "\n".join(status_parts)
+
+    @function_tool
+    async def send_text_to_client(self, message: str) -> str:
+        """
+        Send a text message that appears in the client's chat window.
+        Use this to share links, summaries, or important information they need to see.
+        The chat window will automatically open when you use this tool.
+
+        Args:
+            message: The text to display. Can include markdown links like [text](url).
+        """
+        # get_job_context() retrieves the current LiveKit session context
+        ctx = get_job_context()
+
+        # send_text() sends a data message to the "lk.chat" topic
+        # which is the standard LiveKit chat topic that frontend components listen to
+        await ctx.room.local_participant.send_text(message, topic="lk.chat")
+
+        return f"Sent to client: {message}"
+
+    @function_tool
+    async def send_loom_guidance(self) -> str:
+        """
+        Send the Loom recording guidance link to the client.
+        Use this when the client doesn't have a recording and wants help creating one.
+        The chat window will automatically open to show the link.
+        """
+        ctx = get_job_context()
+
+        message = f"Here's a guide on how to create a Loom recording: {LOOM_GUIDANCE_URL}"
+        await ctx.room.local_participant.send_text(message, topic="lk.chat")
+
+        return f"Sent Loom guidance link to client: {LOOM_GUIDANCE_URL}"
+
+    @function_tool
+    async def request_text_input(self, prompt: str) -> str:
+        """
+        Ask the client to type something in the chat. Use this when you need them to
+        provide a link, email, or other text that's easier to type than speak.
+        The chat window will automatically open.
+
+        Args:
+            prompt: What you want them to type (e.g., "Please paste the Loom link here")
+        """
+        ctx = get_job_context()
+
+        await ctx.room.local_participant.send_text(prompt, topic="lk.chat")
+
+        return f"Asked client to type: {prompt}"
+
 
 server = AgentServer()
 
