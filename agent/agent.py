@@ -64,56 +64,61 @@ def build_agent_instructions() -> str:
     """
     # Base instructions (the core persona and conversation flow)
     base_instructions = """
-        You are a friendly and professional bug reporting assistant. Your job is to help
-        clients report bugs or issues they are experiencing with a product. You guide
-        them through a structured conversation to gather all the information needed to
-        create a clear, actionable ticket.
+        You are a bug reporting assistant. Your job is to efficiently gather information
+        about bugs or issues to create a clear, actionable ticket for developers.
 
-        ## Your conversation flow
+        ## Opening the conversation
 
-        1. Greet the client and explain what will happen during this conversation. The point is to help clarify the issue. It means they may be asked a couple of times what's happening, and that is just to try and spot and information that might be useful for our developers. 
-        2. Ask them to describe the issue they're facing.
-        3. Listen carefully and ask clarifying questions to understand the problem.
-        4. Gather diagnostic details by asking relevant questions. Examples:
-           - Did you see an error message? If so, what did it say?
-           - What was the URL in your browser when the issue occurred?
-           - What was the title or name of the page you were on?
-           - What browser are you using (Chrome, Safari, Firefox, etc.)?
-           IMPORTANT: Only ask questions that are relevant to the product's actual features.
-           Check the product documentation to understand what the product has. For example,
-           if the product has no login system, do not ask about login or user accounts.
-        5. Help them articulate what they expected to happen versus what actually happened.
-        6. If the client hasn't already described the steps they took, guide them through
-           recalling what happened. But if they've already explained the sequence of events
-           while describing the issue, don't ask them to repeat it — just confirm you understood.
-        7. Help them determine the priority level based on these definitions:
-           - Urgent: The platform is offline or in a state causing serious brand damage
-             or restriction on income. Response within 1 hour, resolve within 1 day.
-           - High: A brand or function issue, e.g. part of the platform is damaged but
-             not offline. Response within 1 working day, resolve within 3 working days.
-           - Medium: An error that inhibits typical user experience but does not prevent
-             use of the tool or cause direct revenue loss. Response within 1 working day,
-             resolve within 8 working days.
-           - Low: An error that does not inhibit user experience, such as a styling issue.
-             Response within 2 working days, resolution time agreed with client.
-        8. Ask if they have a screen recording of the issue (e.g. a Loom recording).
+        1. Greet the client briefly
+        2. Tell them you're checking the product documentation to make sure you have full context
+        3. Then explain: "I'll ask you a few questions to understand the issue. Some might seem
+           obvious, but they help uncover details that are useful for our developers."
+        4. Ask them to describe what happened
 
-        ## Your behaviour
+        ## Gathering information
 
-        - Be conversational and patient. Clients will likely not be technical.
-        - IMPORTANT: Do not make clients repeat themselves. If they've already explained
-          something (like what steps they took), don't ask again. Extract the information
-          from what they've already said and confirm your understanding instead.
-        - Keep the conversation moving — don't over-thank or be overly formal.
-        - Apologise that they are facing issues
-        - Reassure them that even though you are a bot, this is designed to help them break down the issue and then share it with our very human team!
-        - Ask one or two questions at a time, not a long list.
-        - Summarise what you've understood back to the client to confirm accuracy. Only do this once you have a number of bits of information. 
-        - If the client is unsure about priority, help them by asking about the impact
-          (is the platform down? is it affecting revenue? can they still use the tool?).
-        - Do not submit anything until you have gathered all the information and the
-          client has confirmed the summary.
-        - Keep your responses concise — this is a voice conversation.
+        Your goal is to collect: description, expected behaviour, steps to reproduce, priority,
+        and issue type. Be efficient:
+
+        - NEVER ask "what did you expect to happen?" if it's obvious from context. If someone
+          says "the audio didn't play", clearly they expected audio to play. Just record that.
+        - NEVER repeat back what the user said and ask "is this correct?" — just move on.
+        - NEVER ask for clarification on obvious things. Use common sense and product knowledge.
+        - If the user already explained the steps while describing the issue, don't ask again.
+
+        ALWAYS ask these diagnostic questions:
+        - What browser were you using?
+        - Do you have a screen recording (like a Loom) of the issue? If not, offer to send guidance.
+
+        ## Using product knowledge
+
+        CRITICAL: You have product documentation. Use it to:
+        - Understand what the product does and how it should behave
+        - Infer expected behaviour without asking (e.g., if it's a voice agent, audio should work)
+        - Only ask questions relevant to the product's actual features
+        - Distinguish bugs (broken features) from feature requests (new features)
+
+        ## Priority levels
+
+        The priority levels are:
+        - Urgent: Platform offline, serious brand damage, or blocking revenue
+        - High: Major feature broken but platform still works
+        - Medium: Annoying bug but users can still use the product
+        - Low: Minor styling or cosmetic issue
+
+        When discussing priority:
+        - If you can infer the priority from what they've described, SUGGEST it first and explain
+          why (e.g., "Based on what you've described, this sounds like a High priority since the
+          main feature isn't working, but the platform is still accessible. Does that sound right?")
+        - If you need to ask, briefly explain what each level means so they can choose
+
+        ## Your style
+
+        - Be direct and efficient, not overly formal or chatty
+        - Keep responses SHORT — this is voice, not text
+        - Don't over-apologise or over-thank
+        - Move the conversation forward, don't circle back
+        - You're a bot helping gather info for a human team — be honest about that
 
         ## Using your tools
 
@@ -150,6 +155,18 @@ def build_agent_instructions() -> str:
           It sends them a clickable link to Loom's getting started guide.
         - request_text_input: Call this when you need the client to type something (like a
           URL or email). It opens the chat and prompts them to type there.
+
+        ## Summary and confirmation
+
+        Once all required fields are collected, call generate_summary to display a formatted
+        summary in the client's chat. Then ask them verbally to review it and confirm if
+        everything looks correct.
+
+        - If they confirm it's correct, you can proceed to submit the bug report.
+        - If they want to change something, update the relevant field using save_report_field,
+          then call generate_summary again to show the updated version. When you do this,
+          just say "I've updated that" — do NOT read the entire summary out loud again.
+          The client can see the updated summary in the chat.
     """
 
     # If we have product docs, add them to help the agent understand the product
@@ -327,6 +344,54 @@ class BugReporterAgent(Agent):
 
         return f"Asked client to type: {prompt}"
 
+    @function_tool
+    async def generate_summary(self) -> str:
+        """
+        Generate a formatted summary of the bug report and send it to the client's chat.
+        Call this when all required fields have been collected and you're ready for the
+        client to review before submission. After calling this, ask the client to confirm
+        if everything looks correct or let you know what needs to be changed.
+        """
+        # Check that all required fields are filled
+        missing = self.bug_report.get_missing_required_fields()
+        if missing:
+            return f"Cannot generate summary yet. Missing required fields: {', '.join(missing)}"
+
+        # Build the summary from the collected report data
+        report = self.bug_report
+        summary_lines = [
+            "## Bug Report Summary",
+            "",
+            f"**Issue Type:** {report.issue_type}",
+            f"**Priority:** {report.priority}",
+            "",
+            f"**Description:** {report.description}",
+            "",
+            f"**Expected Behaviour:** {report.expected_behaviour}",
+            "",
+            f"**Steps to Reproduce:** {report.steps_to_reproduce}",
+        ]
+
+        # Add optional fields if they were provided
+        if report.error_message:
+            summary_lines.append(f"\n**Error Message:** {report.error_message}")
+        if report.url:
+            summary_lines.append(f"**URL:** {report.url}")
+        if report.page_title:
+            summary_lines.append(f"**Page:** {report.page_title}")
+        if report.browser:
+            summary_lines.append(f"**Browser:** {report.browser}")
+        if report.loom_link:
+            summary_lines.append(f"**Recording:** {report.loom_link}")
+
+        summary = "\n".join(summary_lines)
+
+        # Send the summary to the client's chat window
+        ctx = get_job_context()
+        await ctx.room.local_participant.send_text(summary, topic="lk.chat")
+
+        return "Summary sent to client. Ask them to confirm if everything looks correct, or let you know what needs to be changed."
+
 
 server = AgentServer()
 
@@ -352,7 +417,7 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     await session.generate_reply(
-        instructions="Greet the client warmly and let them know you're here to help them report a bug or issue. Ask them to start by describing what happened."
+        instructions="Greet the client briefly. Tell them you're just checking the product documentation to make sure you have full context. Then explain you'll ask a few questions - some might seem obvious but they help uncover useful details for the developers. Ask them to describe what happened."
     )
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@
 2. [x] Add structured data gathering (priority, description, expected behaviour, repro steps)
 3. [x] Add repo docs reading for product knowledge
 4. [x] Add Loom link collection with guidance document link (text display in frontend)
-5. [ ] Add summary/confirmation step
+5. [x] Add summary/confirmation step
 6. [ ] Add GitHub issue creation and return URL
 7. [ ] Add text display in frontend for links and summaries
 
@@ -91,3 +91,25 @@
   - `frontend/components/app/session-view.tsx`
 - **Follow-ups:**
   - Step 5: Add summary/confirmation step
+
+### Step 5 — Summary and confirmation
+
+- **Goal:** Let the client review and confirm the bug report before submission
+- **Plan:** Add a tool that formats and displays a summary, then agent asks for confirmation
+- **Decisions:**
+  - Created `generate_summary` tool that:
+    - Checks all required fields are filled before generating
+    - Builds a markdown-formatted summary with all collected fields
+    - Sends the summary to the client's chat window
+    - Returns guidance to the agent to ask for confirmation
+  - Updated instructions with "Summary and confirmation" section explaining:
+    - When to call `generate_summary` (after all required fields collected)
+    - How to handle confirmation (proceed to submit)
+    - How to handle corrections (update field, regenerate summary)
+- **Python concepts covered:**
+  - Building multi-line strings with lists and `"\n".join()`
+  - Conditional string building (only add optional fields if present)
+- **Files changed:**
+  - `agent/agent.py`
+- **Follow-ups:**
+  - Step 6: Add GitHub issue creation and return URL
