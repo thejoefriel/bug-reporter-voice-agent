@@ -1,0 +1,3 @@
+// No database in this project.
+// Data flows: Voice conversation → structured data in memory → GitHub issue via API.
+// If persistence is added later (e.g. ticket history), this file should be updated.
