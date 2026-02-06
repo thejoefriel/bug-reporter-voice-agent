@@ -4,7 +4,7 @@
 
 1. [x] Strip existing agent, set up bug reporter persona/instructions
 2. [x] Add structured data gathering (priority, description, expected behaviour, repro steps)
-3. [ ] Add repo docs reading for product knowledge
+3. [x] Add repo docs reading for product knowledge
 4. [ ] Add Loom link collection with guidance document link (text display in frontend)
 5. [ ] Add summary/confirmation step
 6. [ ] Add GitHub issue creation and return URL
@@ -42,3 +42,27 @@
   - `agent/agent.py`
 - **Follow-ups:**
   - Step 3: Add repo docs reading for product knowledge
+
+### Step 3 — Repo docs reading for product knowledge
+
+- **Goal:** Give the agent product context so it can ask informed questions and distinguish bugs from feature requests
+- **Plan:** Load markdown files from a configured repo's `docs/ai` folder at startup
+- **Decisions:**
+  - Added `TARGET_REPO_PATH` environment variable for configuration
+  - Created `load_product_docs()` function using `pathlib` for cross-platform path handling
+  - Docs are loaded once at module import time (not per-request) for efficiency
+  - Extracted instructions into `build_agent_instructions()` function for cleaner code
+  - Product docs are appended to base instructions with guidance on how to use them
+  - For testing, pointed `TARGET_REPO_PATH` at this repo itself
+- **Python concepts covered:**
+  - `os.getenv()` for environment variables
+  - `pathlib.Path` for modern file path handling
+  - `glob()` for pattern matching files
+  - Context managers (`with open()`) for safe file handling
+  - Ternary expressions (`x if condition else y`)
+  - SCREAMING_SNAKE_CASE convention for constants
+- **Files changed:**
+  - `agent/agent.py`
+  - `agent/.env.local`
+- **Follow-ups:**
+  - Step 4: Add Loom link collection with guidance document link
